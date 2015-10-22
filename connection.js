@@ -20,8 +20,8 @@ function Connection(duplex, opts) {
 
   opts = opts || {}
 
-  var inStream  = generateStream()
-    , outStream = parseStream(opts)
+  var inStream  = generateStream(this)
+    , outStream = parseStream(this)
 
   duplex.pipe(outStream)
   inStream.pipe(duplex)
