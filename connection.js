@@ -1,44 +1,43 @@
+'use strict'
 
-var generateStream  = require('./lib/generateStream')
-  , parseStream     = require('./lib/parseStream')
-  , Reduplexer      = require('reduplexer')
-  , inherits        = require('inherits')
-  , setImmediate    = global.setImmediate
+var generateStream = require('./lib/generateStream')
+var parseStream = require('./lib/parseStream')
+var writeToStream = require('./lib/writeToStream')
+var Duplexify = require('duplexify')
+var inherits = require('inherits')
 
-setImmediate = setImmediate || function(func) {
-  process.nextTick(func);
-}
-
-function emitPacket(packet) {
+function emitPacket (packet) {
   this.emit(packet.cmd, packet)
 }
 
-function Connection(duplex, opts) {
+function Connection (duplex, opts) {
   if (!(this instanceof Connection)) {
     return new Connection(duplex, opts)
   }
 
   opts = opts || {}
 
-  var inStream  = generateStream(this)
-    , outStream = parseStream(this)
+  var inStream = writeToStream(this)
+  var outStream = parseStream(this)
 
   duplex.pipe(outStream)
   inStream.pipe(duplex)
+
+  inStream.on('error', this.emit.bind(this, 'error'))
+  outStream.on('error', this.emit.bind(this, 'error'))
 
   this.stream = duplex
 
   duplex.on('error', this.emit.bind(this, 'error'))
   duplex.on('close', this.emit.bind(this, 'close'))
 
-  Reduplexer.call(this, inStream, outStream, { objectMode: true })
+  Duplexify.call(this, inStream, outStream, { objectMode: true })
 
   // MQTT.js basic default
-  if (opts.notData !== true)
-    this.on('data', emitPacket)
+  if (opts.notData !== true) this.on('data', emitPacket)
 }
 
-inherits(Connection, Reduplexer)
+inherits(Connection, Duplexify)
 
 ;['connect',
   'connack',
@@ -53,25 +52,22 @@ inherits(Connection, Reduplexer)
   'unsuback',
   'pingreq',
   'pingresp',
-  'disconnect'].forEach(function(cmd) {
-    Connection.prototype[cmd] = function(opts, cb) {
+  'disconnect'].forEach(function (cmd) {
+    Connection.prototype[cmd] = function (opts, cb) {
       opts = opts || {}
-      opts.cmd = cmd;
+      opts.cmd = cmd
 
-      // flush the buffer if needed
+      // Flush the buffer if needed
       // UGLY hack, we should listen for the 'drain' event
       // and start writing again, but this works too
       this.write(opts)
-      if (cb)
-        setImmediate(cb)
+      if (cb) setImmediate(cb)
     }
-  });
+  })
 
-Connection.prototype.destroy = function() {
-  if (this.stream.destroy)
-    this.stream.destroy()
-  else
-    this.stream.end()
+Connection.prototype.destroy = function () {
+  if (this.stream.destroy) this.stream.destroy()
+  else this.stream.end()
 }
 
 module.exports = Connection
